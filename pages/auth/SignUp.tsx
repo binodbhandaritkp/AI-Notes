@@ -37,7 +37,13 @@ export const SignUp: React.FC = () => {
       if (error) {
         setErrorMessage(error.message);
       } else {
-        navigate('/');
+        // Redirect to Sign In with prefilled email and verification instructions
+        navigate(RoutePath.LOGIN, { 
+          state: { 
+            email,
+            successMessage: 'Your account has been created. Please check your email and verify your address before logging in.'
+          } 
+        });
       }
     } catch (err: any) {
       console.error('Signup error:', err);
