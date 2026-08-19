@@ -55,6 +55,7 @@ export const SignUp: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
+    setErrorMessage(null);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -64,12 +65,12 @@ export const SignUp: React.FC = () => {
       });
 
       if (error) {
-        alert(error.message);
+        setErrorMessage(error.message);
         setLoading(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Google login error:", err);
-      alert("An unexpected error occurred");
+      setErrorMessage(err.message || "An unexpected error occurred during Google sign in");
       setLoading(false);
     }
   };

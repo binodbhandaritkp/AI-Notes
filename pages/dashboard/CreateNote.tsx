@@ -6,7 +6,7 @@ import { Editor } from '../../components/ui/Editor';
 import { noteService } from '../../services/noteService';
 import { storageService } from '../../services/storageService';
 import { RoutePath, NoteAttachment } from '../../types';
-import { supabase } from '../../supabaseClient';
+import { supabase } from '../../src/supabaseClient';
 import { StorageImage } from '../../components/ui/StorageImage';
 
 export const CreateNote: React.FC = () => {
@@ -21,6 +21,8 @@ export const CreateNote: React.FC = () => {
   
   // Image preview can be a Blob URL (new) or Storage Path (existing)
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [originalCoverPath, setOriginalCoverPath] = useState<string | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   
   // Attachments: Mixed list of new Files and existing NoteAttachments
   const [newAttachments, setNewAttachments] = useState<File[]>([]);
@@ -45,6 +47,7 @@ export const CreateNote: React.FC = () => {
             setTitle(note.title);
             setContent(note.content);
             setImagePreview(note.thumbnailUrl || null);
+            setOriginalCoverPath(note.thumbnailUrl || null);
             setExistingAttachments(note.attachments || []);
           } else {
              navigate(RoutePath.NOTES);
@@ -63,6 +66,7 @@ export const CreateNote: React.FC = () => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setCoverFile(file);
       const url = URL.createObjectURL(file);
       setImagePreview(url);
     }
@@ -88,8 +92,9 @@ export const CreateNote: React.FC = () => {
     }
   };
 
-  const handleRemoveCover = () => {
+  const handleRemoveCover = async () => {
     setImagePreview(null);
+    setCoverFile(null);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -116,30 +121,38 @@ export const CreateNote: React.FC = () => {
         noteId = newNote.id;
       }
 
-      let finalThumbnailUrl = imagePreview;
+      let finalThumbnailUrl: string | undefined = imagePreview || undefined;
       
-      if (imagePreview && imagePreview.startsWith('blob:')) {
-        const response = await fetch(imagePreview);
-        const blob = await response.blob();
-        const file = new File([blob], "cover.jpg", { type: blob.type });
-        
+      // If a new cover image file was uploaded
+      if (coverFile) {
+        // Upload to ${userId}/notes/${noteId}/cover/${uuid}.${ext}
         finalThumbnailUrl = await storageService.uploadFile(
-          file, 
+          coverFile, 
           user.id, 
-          `notes/${noteId}/cover`
+          'notes',
+          `${noteId}/cover`
         );
-      } 
-      else if (!imagePreview) {
+
+        // Delete previous cover file from storage if there was one
+        if (originalCoverPath && originalCoverPath !== finalThumbnailUrl) {
+          await storageService.deleteFile(originalCoverPath);
+        }
+      } else if (!imagePreview) {
+        // Cover was removed
+        if (originalCoverPath) {
+          await storageService.deleteFile(originalCoverPath);
+        }
         finalThumbnailUrl = undefined;
       }
 
+      // Upload any new attachments
       const uploadedAttachments: NoteAttachment[] = [];
       for (const file of newAttachments) {
         const path = await storageService.uploadFile(
           file, 
           user.id, 
-          `notes/${noteId}/attachments`,
-          `${Date.now()}-${file.name}`
+          'notes',
+          `${noteId}/attachments`
         );
         uploadedAttachments.push({
           name: file.name,
@@ -155,7 +168,7 @@ export const CreateNote: React.FC = () => {
       await noteService.update(noteId, {
         title,
         content,
-        thumbnailUrl: finalThumbnailUrl || undefined,
+        thumbnailUrl: finalThumbnailUrl,
         attachments: finalAttachments
       });
 

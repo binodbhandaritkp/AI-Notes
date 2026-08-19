@@ -19,48 +19,89 @@ const NOTE_LIMIT = 3;
 export const noteService = {
   // Fetch all notes for the authenticated user
   getAll: async (): Promise<Note[]> => {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .order('updated_at', { ascending: false });
-    
-    if (error) throw error;
-    return (data || []).map(mapToNote);
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .order('updated_at', { ascending: false });
+      
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+          console.warn("Supabase 'notes' table does not exist yet. Please run the SQL migration script in your Supabase SQL Editor.");
+          return [];
+        }
+        throw error;
+      }
+      return (data || []).map(mapToNote);
+    } catch (err: any) {
+      if (err?.code === 'PGRST205' || err?.message?.includes('notes')) {
+        return [];
+      }
+      throw err;
+    }
   },
 
   // Get the total count of notes for the current user
   getCount: async (): Promise<number> => {
-    const { count, error } = await supabase
-      .from('notes')
-      .select('*', { count: 'exact', head: true });
-    
-    if (error) throw error;
-    return count || 0;
+    try {
+      const { count, error } = await supabase
+        .from('notes')
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+          return 0;
+        }
+        throw error;
+      }
+      return count || 0;
+    } catch (err: any) {
+      if (err?.code === 'PGRST205' || err?.message?.includes('notes')) {
+        return 0;
+      }
+      throw err;
+    }
   },
 
   // Get a single note by ID
   getById: async (id: string): Promise<Note | undefined> => {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) return undefined;
-    return mapToNote(data);
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) return undefined;
+      return mapToNote(data);
+    } catch {
+      return undefined;
+    }
   },
 
   // Search notes by title or content
   search: async (query: string): Promise<Note[]> => {
-    await delay(300); // Small delay for UX
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
-      .order('updated_at', { ascending: false });
+    try {
+      await delay(300); // Small delay for UX
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+        .order('updated_at', { ascending: false });
 
-    if (error) throw error;
-    return (data || []).map(mapToNote);
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+          return [];
+        }
+        throw error;
+      }
+      return (data || []).map(mapToNote);
+    } catch (err: any) {
+      if (err?.code === 'PGRST205' || err?.message?.includes('notes')) {
+        return [];
+      }
+      throw err;
+    }
   },
 
   // Create a new note
@@ -87,7 +128,12 @@ export const noteService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+        throw new Error("The 'notes' table does not exist in your Supabase database yet. Please run the SQL schema script in Supabase SQL Editor.");
+      }
+      throw error;
+    }
     return mapToNote(data);
   },
 
@@ -110,7 +156,12 @@ export const noteService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+        throw new Error("The 'notes' table does not exist in your Supabase database yet. Please run the SQL schema script in Supabase SQL Editor.");
+      }
+      throw error;
+    }
     return mapToNote(data);
   },
 
@@ -144,7 +195,7 @@ export const noteService = {
       .delete()
       .eq('id', id);
     
-    if (error) throw error;
+    if (error && error.code !== 'PGRST205') throw error;
   }
 };
 
