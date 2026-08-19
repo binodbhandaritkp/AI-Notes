@@ -2,14 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, FileText, ArrowUpRight, Calendar, Search } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { UpgradeModal } from '../../components/ui/UpgradeModal';
 import { Note, RoutePath } from '../../types';
-import { noteService } from '../../services/noteService';
+import { noteService, NOTE_LIMIT } from '../../services/noteService';
 import { StorageImage } from '../../components/ui/StorageImage';
 
 export const MyNotes: React.FC = () => {
   const navigate = useNavigate();
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchNotes = async () => {
@@ -25,6 +27,14 @@ export const MyNotes: React.FC = () => {
     fetchNotes();
   }, []);
 
+  const handleCreateNote = () => {
+    if (notes.length >= NOTE_LIMIT) {
+      setIsUpgradeModalOpen(true);
+      return;
+    }
+    navigate(RoutePath.CREATE_NOTE);
+  };
+
   const getPreviewText = (html: string) => {
     const tmp = document.createElement("DIV");
     tmp.innerHTML = html;
@@ -37,10 +47,10 @@ export const MyNotes: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Notes</h1>
           <p className="text-slate-500 mt-2 text-base">
-            Manage your personal knowledge base.
+            Manage your personal knowledge base ({notes.length}/{NOTE_LIMIT} free notes used).
           </p>
         </div>
-        <Button onClick={() => navigate(RoutePath.CREATE_NOTE)} size="lg" className="rounded-full shadow-lg shadow-indigo-500/20">
+        <Button onClick={handleCreateNote} size="lg" className="rounded-full shadow-lg shadow-indigo-500/20">
           <Plus className="mr-2 h-5 w-5" />
           Create Note
         </Button>
@@ -120,9 +130,14 @@ export const MyNotes: React.FC = () => {
              </div>
              <h3 className="text-lg font-semibold text-slate-900">No notes yet</h3>
              <p className="text-slate-500 mb-6 max-w-sm">Create your first note to get started.</p>
-             <Button onClick={() => navigate(RoutePath.CREATE_NOTE)} variant="primary" className="rounded-full">Create your first note</Button>
+             <Button onClick={handleCreateNote} variant="primary" className="rounded-full">Create your first note</Button>
           </div>
       )}
+
+      <UpgradeModal 
+        isOpen={isUpgradeModalOpen} 
+        onClose={() => setIsUpgradeModalOpen(false)} 
+      />
     </div>
   );
 };

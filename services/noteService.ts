@@ -14,7 +14,7 @@ const mapToNote = (data: any): Note => ({
   attachments: data.attachments || [],
 });
 
-const NOTE_LIMIT = 3;
+export const NOTE_LIMIT = 4;
 
 export const noteService = {
   // Fetch all notes for the authenticated user

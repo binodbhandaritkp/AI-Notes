@@ -2,15 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Sparkles, ArrowRight, FolderOpen, FileText, ShieldCheck, PenTool, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { UpgradeModal } from '../../components/ui/UpgradeModal';
 import { RoutePath } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { noteService } from '../../services/noteService';
+import { noteService, NOTE_LIMIT } from '../../services/noteService';
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const [noteCount, setNoteCount] = useState<number | null>(null);
   const [isCountLoading, setIsCountLoading] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchCount = async () => {
@@ -31,11 +33,24 @@ export const Home: React.FC = () => {
     fetchCount();
   }, [isAuthenticated]);
 
-  const handleCreateClick = () => {
-    if (isAuthenticated) {
-      navigate(RoutePath.CREATE_NOTE);
-    } else {
+  const handleCreateClick = async () => {
+    if (!isAuthenticated) {
       navigate(RoutePath.LOGIN);
+      return;
+    }
+
+    // Check limit before navigating
+    try {
+      const count = await noteService.getCount();
+      setNoteCount(count);
+      if (count >= NOTE_LIMIT) {
+        setIsUpgradeModalOpen(true);
+        return;
+      }
+      navigate(RoutePath.CREATE_NOTE);
+    } catch (err) {
+      console.error("Error checking note count:", err);
+      navigate(RoutePath.CREATE_NOTE);
     }
   };
 
@@ -165,6 +180,11 @@ export const Home: React.FC = () => {
             </Button>
         </div>
       </div>
+
+      <UpgradeModal 
+        isOpen={isUpgradeModalOpen} 
+        onClose={() => setIsUpgradeModalOpen(false)} 
+      />
     </div>
   );
 };

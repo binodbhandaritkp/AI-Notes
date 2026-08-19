@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Save, ArrowLeft, Image as ImageIcon, Wand2, X, Calendar, Loader2, Paperclip, File as FileIcon, FileText, Zap, Sparkles, ChevronRight } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Editor } from '../../components/ui/Editor';
-import { noteService } from '../../services/noteService';
+import { noteService, NOTE_LIMIT } from '../../services/noteService';
 import { storageService } from '../../services/storageService';
 import { RoutePath, NoteAttachment } from '../../types';
 import { supabase } from '../../src/supabaseClient';
@@ -35,7 +35,7 @@ export const CreateNote: React.FC = () => {
         if (!id) {
           // If creating a NEW note, check count
           const count = await noteService.getCount();
-          if (count >= 3) {
+          if (count >= NOTE_LIMIT) {
             setIsLimitReached(true);
             setLoading(false);
             return;
@@ -210,7 +210,7 @@ export const CreateNote: React.FC = () => {
                 Plan Limit Reached
               </h2>
               <p className="text-slate-600 text-lg font-medium leading-relaxed max-w-sm mx-auto">
-                Free users can create a maximum of <span className="text-indigo-600 font-bold">3 notes</span>. Upgrade to Pro for unlimited creative space.
+                Free plan limit reached. Upgrade to Pro to create unlimited notes.
               </p>
             </div>
 
@@ -219,7 +219,7 @@ export const CreateNote: React.FC = () => {
                 variant="primary" 
                 size="lg" 
                 className="rounded-full shadow-lg shadow-indigo-500/20 group h-14"
-                onClick={() => {}} // Placeholder for upgrade
+                onClick={() => alert("Pro subscriptions are coming soon! Thank you for testing.")}
               >
                 <Sparkles size={18} className="mr-2 group-hover:rotate-12 transition-transform" />
                 <span>Upgrade to Pro</span>
