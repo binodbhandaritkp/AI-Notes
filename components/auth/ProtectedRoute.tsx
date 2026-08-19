@@ -1,15 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../src/supabaseClient';
 import { RoutePath } from '../../types';
 
 export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const [checking, setChecking] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
   const location = useLocation();
 
-  if (!isAuthenticated) {
-    // Redirect them to the /login page, but save the current location they were
-    // trying to go to when they were redirected.
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (isMounted) {
+          setHasSession(!!session);
+          setChecking(false);
+        }
+      } catch (err) {
+        console.error('Error verifying session:', err);
+        if (isMounted) {
+          setHasSession(false);
+          setChecking(false);
+        }
+      }
+    };
+
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (isMounted) {
+        setHasSession(!!session);
+        setChecking(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  if (checking) {
+    return null;
+  }
+
+  if (!hasSession) {
     return <Navigate to={RoutePath.LOGIN} state={{ from: location }} replace />;
   }
 

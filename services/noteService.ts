@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../src/supabaseClient';
 import { Note, NoteAttachment } from '../types';
 import { storageService } from './storageService';
 

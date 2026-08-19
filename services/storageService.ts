@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../src/supabaseClient';
 
 export const storageService = {
   // Since bucket is private, we must use signed URLs
