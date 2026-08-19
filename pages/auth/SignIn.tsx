@@ -26,15 +26,17 @@ export const SignIn: React.FC = () => {
     const password = formData.get('password') as string;
     
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (error) {
         setErrorMessage(error.message);
-      } else {
+      } else if (data?.session) {
         navigate('/');
+      } else {
+        setErrorMessage('No active session found. Please verify your email.');
       }
     } catch (err: any) {
       console.error('Login error:', err);
@@ -98,6 +100,7 @@ export const SignIn: React.FC = () => {
               Enter your credentials to access your AI workspace.
             </p>
 
+            {/* Success Message Banner */}
             {successMessage && (
                <div className="mt-6 flex w-full items-start gap-3 rounded-xl border border-emerald-200/60 bg-emerald-50/80 p-4 text-sm text-emerald-800 backdrop-blur-md shadow-sm animate-in fade-in slide-in-from-top-2">
                   <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
@@ -184,9 +187,6 @@ export const SignIn: React.FC = () => {
 
           </div>
         </div>
-        
-        <div className="absolute top-10 left-0 w-2 h-2 rounded-full bg-indigo-500/20 blur-[1px] animate-ping" />
-        <div className="absolute bottom-10 right-0 w-3 h-3 rounded-full bg-purple-500/20 blur-[2px] animate-bounce" style={{ animationDuration: '3s' }} />
 
       </div>
     </div>
