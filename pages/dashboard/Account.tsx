@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Shield, AlertTriangle, Save, Camera, Lock, ChevronRight, Globe, Key, Trash2, Smartphone } from 'lucide-react';
+import { User, Mail, Shield, AlertTriangle, Save, Camera, Lock, ChevronRight, Globe, Key, Trash2, Smartphone, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { supabase } from '../../src/supabaseClient';
@@ -11,7 +11,10 @@ import { StorageImage } from '../../components/ui/StorageImage';
 export const Account: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // User specific state
   const [userId, setUserId] = useState('');
@@ -43,8 +46,9 @@ export const Account: React.FC = () => {
           displayName: user.user_metadata?.display_name || '',
           timezone: user.user_metadata?.timezone || 'UTC-8 (Pacific Time)'
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching user:", error);
+        setErrorMessage(error?.message || "Failed to load account details");
       } finally {
         setFetching(false);
       }
@@ -61,13 +65,17 @@ export const Account: React.FC = () => {
     const file = e.target.files?.[0];
     if (file && userId) {
       try {
-        setLoading(true);
-        // If there's an existing uploaded avatar in storage, remove it
-        if (avatarPath && !avatarPath.startsWith('http') && !avatarPath.startsWith('blob:')) {
-          await storageService.deleteFile(avatarPath);
+        setAvatarLoading(true);
+        setStatusMessage(null);
+        setErrorMessage(null);
+
+        // If there's an existing uploaded avatar in storage, clean it up
+        const previousAvatar = avatarPath;
+        if (previousAvatar && !previousAvatar.startsWith('http') && !previousAvatar.startsWith('blob:') && !previousAvatar.startsWith('data:')) {
+          await storageService.deleteFile(previousAvatar);
         }
 
-        // Upload to ${userId}/avatars/profile/${uuid}.${ext}
+        // Upload new avatar to ${userId}/avatars/profile/${uuid}.${ext}
         const path = await storageService.uploadFile(
           file, 
           userId, 
@@ -75,28 +83,60 @@ export const Account: React.FC = () => {
           'profile'
         );
         
-        // Update local state to show preview immediately
+        // Update state and user profile
         setAvatarPath(path);
         
-        // Save the avatar change to user metadata
         const { error } = await supabase.auth.updateUser({
           data: { avatar_url: path }
         });
         
         if (error) throw error;
+        setStatusMessage("Profile photo updated successfully!");
+        setTimeout(() => setStatusMessage(null), 4000);
         
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error uploading avatar:", error);
-        alert("Failed to upload avatar.");
+        setErrorMessage(error?.message || "Failed to upload avatar.");
       } finally {
-        setLoading(false);
+        setAvatarLoading(false);
       }
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!avatarPath) return;
+    try {
+      setAvatarLoading(true);
+      setStatusMessage(null);
+      setErrorMessage(null);
+
+      // Clean up from storage
+      if (!avatarPath.startsWith('http') && !avatarPath.startsWith('blob:') && !avatarPath.startsWith('data:')) {
+        await storageService.deleteFile(avatarPath);
+      }
+
+      setAvatarPath(null);
+
+      const { error } = await supabase.auth.updateUser({
+        data: { avatar_url: null }
+      });
+
+      if (error) throw error;
+      setStatusMessage("Profile photo removed.");
+      setTimeout(() => setStatusMessage(null), 4000);
+    } catch (error: any) {
+      console.error("Error removing avatar:", error);
+      setErrorMessage(error?.message || "Failed to remove avatar.");
+    } finally {
+      setAvatarLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
 
     try {
       const { error } = await supabase.auth.updateUser({
@@ -104,29 +144,38 @@ export const Account: React.FC = () => {
           full_name: formData.fullName,
           display_name: formData.displayName,
           timezone: formData.timezone
-          // Avatar is updated immediately on file select
         }
       });
 
       if (error) throw error;
       
-      // Simulate save delay
-      setTimeout(() => setLoading(false), 500);
-
-    } catch (error) {
+      setStatusMessage("Account information saved successfully!");
+      setTimeout(() => setStatusMessage(null), 4000);
+    } catch (error: any) {
       console.error("Error updating profile:", error);
-      alert("Failed to update profile.");
+      setErrorMessage(error?.message || "Failed to update profile.");
+    } finally {
       setLoading(false);
     }
   };
 
   const handlePasswordReset = async () => {
     if (!email) return;
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/account',
-    });
-    if (error) alert(error.message);
-    else alert('Password reset email sent!');
+    setStatusMessage(null);
+    setErrorMessage(null);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/account',
+      });
+      if (error) {
+        setErrorMessage(error.message);
+      } else {
+        setStatusMessage('Password reset email has been sent. Please check your inbox.');
+        setTimeout(() => setStatusMessage(null), 6000);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to send password reset email.');
+    }
   };
 
   const handleSignOut = async () => {
@@ -152,6 +201,21 @@ export const Account: React.FC = () => {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-indigo-300/10 rounded-full blur-[120px] -z-10 mix-blend-multiply pointer-events-none" />
         <div className="absolute bottom-0 right-[-10%] w-[800px] h-[800px] bg-fuchsia-100/20 rounded-full blur-[100px] -z-10 mix-blend-multiply pointer-events-none" />
 
+        {/* Status / Error Toast Banners */}
+        {statusMessage && (
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-4 text-sm font-medium text-emerald-800 backdrop-blur-xl shadow-sm animate-in fade-in slide-in-from-top-2">
+            <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
+            <span>{statusMessage}</span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/90 p-4 text-sm font-medium text-rose-800 backdrop-blur-xl shadow-sm animate-in fade-in slide-in-from-top-2">
+            <XCircle className="h-5 w-5 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         {/* Main Glass Panel */}
         <div className="relative rounded-[40px] border border-white/60 bg-white/40 backdrop-blur-[80px] shadow-[0_40px_100px_-15px_rgba(0,0,0,0.05),0_10px_30px_-5px_rgba(0,0,0,0.02)] overflow-hidden transition-all duration-500 hover:shadow-[0_50px_120px_-20px_rgba(0,0,0,0.08)] ring-1 ring-white/50">
             
@@ -165,9 +229,13 @@ export const Account: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-b from-white/40 to-transparent opacity-50 pointer-events-none" />
                     
                     {/* Avatar Group */}
-                    <div className="group relative mb-6 cursor-pointer" onClick={() => document.getElementById('avatar-upload')?.click()}>
+                    <div className="group relative mb-4 cursor-pointer" onClick={() => !avatarLoading && document.getElementById('avatar-upload')?.click()}>
                         <div className="h-32 w-32 rounded-full p-1 bg-white/50 backdrop-blur-xl border border-white shadow-xl transition-transform duration-500 group-hover:scale-105 relative overflow-hidden">
-                             {avatarPath ? (
+                             {avatarLoading ? (
+                                <div className="h-full w-full rounded-full bg-slate-100 flex items-center justify-center text-indigo-500">
+                                  <Loader2 className="animate-spin" size={32} />
+                                </div>
+                             ) : avatarPath ? (
                                 <StorageImage 
                                     path={avatarPath} 
                                     alt="Profile" 
@@ -179,7 +247,7 @@ export const Account: React.FC = () => {
                                 </div>
                              )}
                         </div>
-                        <button type="button" className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-lg ring-1 ring-slate-100 transition-all hover:scale-110 hover:text-indigo-600">
+                        <button type="button" disabled={avatarLoading} className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-lg ring-1 ring-slate-100 transition-all hover:scale-110 hover:text-indigo-600">
                             <Camera size={18} />
                         </button>
                         <input 
@@ -188,8 +256,20 @@ export const Account: React.FC = () => {
                             accept="image/*" 
                             className="hidden" 
                             onChange={handleAvatarChange}
+                            disabled={avatarLoading}
                         />
                     </div>
+
+                    {avatarPath && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAvatar}
+                        disabled={avatarLoading}
+                        className="mb-4 text-xs font-semibold text-rose-500 hover:text-rose-700 transition-colors"
+                      >
+                        Remove profile photo
+                      </button>
+                    )}
 
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
                         {formData.fullName || formData.displayName || email.split('@')[0] || 'User'}
@@ -271,7 +351,7 @@ export const Account: React.FC = () => {
                                     </div>
                                     <div>
                                         <p className="text-sm font-semibold text-slate-900">Password</p>
-                                        <p className="text-xs text-slate-500">Last changed 3 months ago</p>
+                                        <p className="text-xs text-slate-500">Request password reset email</p>
                                     </div>
                                 </div>
                                 <Button type="button" variant="outline" size="sm" onClick={handlePasswordReset}>
@@ -315,7 +395,7 @@ export const Account: React.FC = () => {
                                         Permanently delete your account and all of your content. This action cannot be undone.
                                     </p>
                                 </div>
-                                <Button type="button" variant="danger" size="sm" className="whitespace-nowrap">
+                                <Button type="button" variant="danger" size="sm" className="whitespace-nowrap" onClick={() => setErrorMessage("Account deletion requires administrative authorization.")}>
                                     <Trash2 className="mr-2 h-3.5 w-3.5" />
                                     Delete Account
                                 </Button>

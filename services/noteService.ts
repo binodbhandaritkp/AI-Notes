@@ -14,6 +14,21 @@ const mapToNote = (data: any): Note => ({
   attachments: data.attachments || [],
 });
 
+// Helper to check if an error is due to missing 'notes' table
+const isMissingTableError = (error: any): boolean => {
+  if (!error) return false;
+  return (
+    error.code === 'PGRST205' ||
+    error.code === '42P01' ||
+    (typeof error.message === 'string' && (
+      error.message.includes('notes') ||
+      error.message.includes('schema cache') ||
+      error.message.includes('does not exist') ||
+      error.message.includes('Could not find the table')
+    ))
+  );
+};
+
 export const NOTE_LIMIT = 4;
 
 export const noteService = {
@@ -26,7 +41,7 @@ export const noteService = {
         .order('updated_at', { ascending: false });
       
       if (error) {
-        if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+        if (isMissingTableError(error)) {
           console.warn("Supabase 'notes' table does not exist yet. Please run the SQL migration script in your Supabase SQL Editor.");
           return [];
         }
@@ -34,7 +49,7 @@ export const noteService = {
       }
       return (data || []).map(mapToNote);
     } catch (err: any) {
-      if (err?.code === 'PGRST205' || err?.message?.includes('notes')) {
+      if (isMissingTableError(err)) {
         return [];
       }
       throw err;
@@ -49,14 +64,14 @@ export const noteService = {
         .select('*', { count: 'exact', head: true });
       
       if (error) {
-        if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+        if (isMissingTableError(error)) {
           return 0;
         }
         throw error;
       }
       return count || 0;
     } catch (err: any) {
-      if (err?.code === 'PGRST205' || err?.message?.includes('notes')) {
+      if (isMissingTableError(err)) {
         return 0;
       }
       throw err;
@@ -72,9 +87,12 @@ export const noteService = {
         .eq('id', id)
         .single();
       
-      if (error) return undefined;
+      if (error) {
+        if (isMissingTableError(error)) return undefined;
+        return undefined;
+      }
       return mapToNote(data);
-    } catch {
+    } catch (err) {
       return undefined;
     }
   },
@@ -90,14 +108,14 @@ export const noteService = {
         .order('updated_at', { ascending: false });
 
       if (error) {
-        if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+        if (isMissingTableError(error)) {
           return [];
         }
         throw error;
       }
       return (data || []).map(mapToNote);
     } catch (err: any) {
-      if (err?.code === 'PGRST205' || err?.message?.includes('notes')) {
+      if (isMissingTableError(err)) {
         return [];
       }
       throw err;
@@ -129,7 +147,7 @@ export const noteService = {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+      if (isMissingTableError(error)) {
         throw new Error("The 'notes' table does not exist in your Supabase database yet. Please run the SQL schema script in Supabase SQL Editor.");
       }
       throw error;
@@ -157,7 +175,7 @@ export const noteService = {
       .single();
 
     if (error) {
-      if (error.code === 'PGRST205' || error.message?.includes('notes')) {
+      if (isMissingTableError(error)) {
         throw new Error("The 'notes' table does not exist in your Supabase database yet. Please run the SQL schema script in Supabase SQL Editor.");
       }
       throw error;
@@ -167,35 +185,41 @@ export const noteService = {
 
   // Delete a note and its associated files
   delete: async (id: string): Promise<void> => {
-    // 1. Get note to find files to delete
-    const note = await noteService.getById(id);
-    
-    if (note) {
-      const pathsToDelete: string[] = [];
+    try {
+      // 1. Get note to find files to delete
+      const note = await noteService.getById(id);
       
-      // Add thumbnail if it's a storage path
-      if (note.thumbnailUrl && !note.thumbnailUrl.startsWith('http')) {
-        pathsToDelete.push(note.thumbnailUrl);
+      if (note) {
+        const pathsToDelete: string[] = [];
+        
+        // Add thumbnail if it's a storage path
+        if (note.thumbnailUrl && !note.thumbnailUrl.startsWith('http')) {
+          pathsToDelete.push(note.thumbnailUrl);
+        }
+
+        // Add attachment paths
+        if (note.attachments && note.attachments.length > 0) {
+          note.attachments.forEach(att => pathsToDelete.push(att.path));
+        }
+
+        // Delete files from storage
+        if (pathsToDelete.length > 0) {
+          await storageService.deleteFiles(pathsToDelete);
+        }
       }
 
-      // Add attachment paths
-      if (note.attachments && note.attachments.length > 0) {
-        note.attachments.forEach(att => pathsToDelete.push(att.path));
-      }
-
-      // Delete files from storage
-      if (pathsToDelete.length > 0) {
-        await storageService.deleteFiles(pathsToDelete);
+      // 2. Delete from DB
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', id);
+      
+      if (error && !isMissingTableError(error)) throw error;
+    } catch (err: any) {
+      if (!isMissingTableError(err)) {
+        console.error("Error deleting note:", err);
       }
     }
-
-    // 2. Delete from DB
-    const { error } = await supabase
-      .from('notes')
-      .delete()
-      .eq('id', id);
-    
-    if (error && error.code !== 'PGRST205') throw error;
   }
 };
 

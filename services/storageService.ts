@@ -1,21 +1,65 @@
 import { supabase } from '../src/supabaseClient';
 
+interface CachedUrl {
+  url: string;
+  expiresAt: number;
+}
+
+const signedUrlCache = new Map<string, CachedUrl>();
+
+// Helper to sanitize paths
+const sanitizePath = (path: string): string => {
+  if (!path || typeof path !== 'string') return '';
+  return path.trim().replace(/^\/+/, '');
+};
+
+// Helper to determine if a string is already a direct/resolvable URL
+const isDirectUrl = (path: string): boolean => {
+  if (!path || typeof path !== 'string') return false;
+  const trimmed = path.trim();
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  );
+};
+
 export const storageService = {
   // Since bucket is private, we must use signed URLs
   async getSignedUrl(path: string): Promise<string> {
-    if (!path) return '';
-    if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path; // Already a URL
+    if (!path || typeof path !== 'string') return '';
+    const cleanPath = sanitizePath(path);
+    if (!cleanPath) return '';
     
+    if (isDirectUrl(cleanPath)) return cleanPath; // Already a full or blob URL
+    
+    // Check in-memory cache
+    const now = Date.now();
+    const cached = signedUrlCache.get(cleanPath);
+    if (cached && cached.expiresAt > now) {
+      return cached.url;
+    }
+
     try {
       const { data, error } = await supabase.storage
         .from('app-files')
-        .createSignedUrl(path, 3600); // 1 hour validity
+        .createSignedUrl(cleanPath, 3600); // 1 hour validity
         
       if (error) {
-        console.error('Error getting signed URL:', error);
+        console.error('Error getting signed URL for:', cleanPath, error);
         return '';
       }
-      return data.signedUrl;
+
+      if (data?.signedUrl) {
+        // Cache for 50 minutes (leaving 10 min buffer before the 60 min token expires)
+        signedUrlCache.set(cleanPath, {
+          url: data.signedUrl,
+          expiresAt: now + 50 * 60 * 1000
+        });
+        return data.signedUrl;
+      }
+      return '';
     } catch (err) {
       console.error('Failed to create signed URL:', err);
       return '';
@@ -49,10 +93,12 @@ export const storageService = {
       : `${uniqueId}.${extension}`;
 
     // Structure: ${userId}/${featureName}/${itemId}/${filename} or ${userId}/${featureName}/${filename}
-    const path = itemId 
+    const rawPath = itemId 
       ? `${userId}/${featureName}/${itemId}/${filename}`
       : `${userId}/${featureName}/${filename}`;
     
+    const path = sanitizePath(rawPath);
+
     const { error } = await supabase.storage
       .from('app-files')
       .upload(path, file, { 
@@ -65,12 +111,16 @@ export const storageService = {
   },
 
   async deleteFile(path: string): Promise<void> {
-    if (!path || path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return;
+    if (!path || isDirectUrl(path)) return;
+    const cleanPath = sanitizePath(path);
+    if (!cleanPath) return;
     
+    signedUrlCache.delete(cleanPath);
+
     try {
       const { error } = await supabase.storage
         .from('app-files')
-        .remove([path]);
+        .remove([cleanPath]);
         
       if (error) console.error('Error deleting file:', error);
     } catch (err) {
@@ -80,8 +130,13 @@ export const storageService = {
 
   async deleteFiles(paths: string[]): Promise<void> {
     if (!paths || !paths.length) return;
-    const validPaths = paths.filter(p => p && !p.startsWith('http') && !p.startsWith('blob:') && !p.startsWith('data:'));
+    const validPaths = paths
+      .map(sanitizePath)
+      .filter(p => p && !isDirectUrl(p));
+
     if (!validPaths.length) return;
+
+    validPaths.forEach(p => signedUrlCache.delete(p));
 
     try {
       const { error } = await supabase.storage
